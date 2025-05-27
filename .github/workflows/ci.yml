@@ -20,7 +20,7 @@ jobs:
     #       POSTGRES_PASSWORD: pae9bai7Cahg?ahcae"g
     #       POSTGRES_DB: simple_bank
     #     ports:
-    #       - 5432:5432
+    #       - 5445:5445
     #     options: >-
     #       --health-cmd pg_isready
     #       --health-interval 10s
