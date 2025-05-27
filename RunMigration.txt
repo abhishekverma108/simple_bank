@@ -1,2 +1,2 @@
-migrate -path db/migration -database "postgresql://root:secret@localhost:5432/simple_bank?sslmode=disable" -verbose up
+migrate -path db/migration -database "postgresql://postgres:pae9bai7Cahg?ahcae\"g@134.209.150.195:5432/simple_bank?sslmode=disable" -verbose up
 
