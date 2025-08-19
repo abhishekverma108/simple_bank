@@ -10,7 +10,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-const TaskSendVerifyEmail = "task:send_verify_email  "
+const TaskSendVerifyEmail = "task:send_verify_email"
 
 type PayloadSendVerifyEmail struct {
 	Username string `json:"username"`
@@ -41,7 +41,7 @@ func (processor *RedisTaskProcessor) ProcessTaskSendVerifyEmail(ctx context.Cont
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 		return fmt.Errorf("failed to unmarshal payload: %w", asynq.SkipRetry)
 	}
-	user, err := processor.store.GetUser(ctx, payload.Username)
+	user, err := processor.store.GetUserByUsername(ctx, payload.Username)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("user doesn't exist: %w", asynq.SkipRetry)

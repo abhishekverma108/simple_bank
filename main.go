@@ -5,7 +5,9 @@ import (
 	"simplebank/api"
 	db "simplebank/db/sqlc"
 	"simplebank/util"
+	"simplebank/worker"
 
+	"github.com/hibiken/asynq"
 	"go.elastic.co/apm/module/apmsql"
 	_ "go.elastic.co/apm/module/apmsql/v2/pq"
 
@@ -24,10 +26,23 @@ func main() {
 	}
 
 	store := db.NewStore(conn)
-	server := api.NewServer(store)
+	redisOpts := asynq.RedisClientOpt{
+		Addr: config.RedisAddress,
+	}
+	taskDistributor := worker.NewRedisTaskDistributor(redisOpts)
+	go runTaskProcessor(redisOpts, store)
+	server := api.NewServer(store, taskDistributor)
 	err = server.Start(config.ServerAddress)
 	if err != nil {
 		log.Fatal("cannot start server:", err)
 	}
 
+}
+func runTaskProcessor(redisOpt asynq.RedisClientOpt, store db.Store) {
+	taskProcessor := worker.NewRedisTaskProcessor(redisOpt, store)
+	log.Println("starting task processor...")
+	err := taskProcessor.Start()
+	if err != nil {
+		log.Fatal("cannot start task processor:", err)
+	}
 }
