@@ -5,6 +5,7 @@ import (
 	"simplebank/worker"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis/v8"
 	"go.elastic.co/apm/module/apmgin/v2"
 )
 
@@ -12,12 +13,14 @@ type Server struct {
 	store           db.Store
 	router          *gin.Engine
 	taskDistributor worker.TaskDistributor
+	redisClient     *redis.Client // Direct Redis access
 }
 
-func NewServer(store db.Store, taskDistributor worker.TaskDistributor) *Server {
+func NewServer(store db.Store, taskDistributor worker.TaskDistributor, redisClient *redis.Client) *Server {
 	server := &Server{
 		store:           store,
 		taskDistributor: taskDistributor,
+		redisClient:     redisClient, // Direct Redis access
 	}
 	router := gin.Default()
 	router.Use(apmgin.Middleware(router))

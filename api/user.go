@@ -71,7 +71,7 @@ func (server *Server) createUser(ctx *gin.Context) {
 			taskPayload := worker.PayloadSendVerifyEmail{
 				Username: user.Username,
 			}
-			return server.taskDistributor.DistributeTaskSendVerifyEmail(ctx, &taskPayload)
+			return server.taskDistributor.DistributeTaskSendVerifyEmail(ctx.Request.Context(), &taskPayload)
 			//if err != nil {
 			//	ctx.JSON(http.StatusInternalServerError, gin.H{
 			//		"error":   "Failed to send verification email",
@@ -82,7 +82,12 @@ func (server *Server) createUser(ctx *gin.Context) {
 		},
 	}
 
-	txResult, err := server.store.CreateUserTx(ctx, arg)
+	txResult, err := server.store.CreateUserTx(ctx.Request.Context(), arg)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+	err = server.redisClient.Set(ctx.Request.Context(), txResult.User.Username, "first of few users", 0).Err()
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return

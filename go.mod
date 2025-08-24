@@ -8,14 +8,15 @@ require (
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-playground/validator/v10 v10.26.0
+	github.com/go-redis/redis/v8 v8.11.5
 	github.com/golang/mock v1.6.0
 	github.com/google/uuid v1.6.0
 	github.com/hibiken/asynq v0.25.1
 	github.com/lib/pq v1.10.9
-	github.com/rabbitmq/amqp091-go v1.10.0
 	github.com/rs/zerolog v1.15.0
 	github.com/spf13/viper v1.20.1
 	go.elastic.co/apm/module/apmgin/v2 v2.7.1
+	go.elastic.co/apm/module/apmgoredisv8/v2 v2.7.1
 	go.elastic.co/apm/module/apmsql v1.15.0
 	go.elastic.co/apm/module/apmsql/v2 v2.7.1
 )

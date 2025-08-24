@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/hibiken/asynq"
 )
 
@@ -14,13 +15,20 @@ type TaskDistributor interface {
 	) error
 }
 type RedisTaskDistributor struct {
-	client *asynq.Client
+	client      *asynq.Client
+	redisClient *redis.Client
 }
 
-func NewRedisTaskDistributor(redisOpt asynq.RedisClientOpt) TaskDistributor {
+func NewRedisTaskDistributor(redisOpt asynq.RedisClientOpt, redisClient *redis.Client) TaskDistributor {
 	client := asynq.NewClient(redisOpt)
 	return &RedisTaskDistributor{
-		client: client,
+		client:      client,
+		redisClient: redisClient,
 	}
 
+}
+
+// GetRedisClient returns the monitored Redis client for direct operations
+func (distributor *RedisTaskDistributor) GetRedisClient() *redis.Client {
+	return distributor.redisClient
 }

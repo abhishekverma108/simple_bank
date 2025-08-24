@@ -4,6 +4,7 @@ import (
 	"context"
 	db "simplebank/db/sqlc"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/hibiken/asynq"
 )
 
@@ -13,18 +14,20 @@ type TaskProcessor interface {
 }
 
 type RedisTaskProcessor struct {
-	server *asynq.Server
-	store  db.Store
+	server      *asynq.Server
+	store       db.Store
+	redisClient *redis.Client
 }
 
-func NewRedisTaskProcessor(redisOpt asynq.RedisClientOpt, store db.Store) TaskProcessor {
+func NewRedisTaskProcessor(redisOpt asynq.RedisClientOpt, redisClient *redis.Client, store db.Store) TaskProcessor {
 	server := asynq.NewServer(
 		redisOpt,
 		asynq.Config{},
 	)
 	return &RedisTaskProcessor{
-		server: server,
-		store:  store,
+		server:      server,
+		redisClient: redisClient,
+		store:       store,
 	}
 }
 

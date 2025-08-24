@@ -7,11 +7,12 @@ import (
 	"simplebank/util"
 	"simplebank/worker"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/hibiken/asynq"
+	_ "github.com/lib/pq"
+	apmgoredis "go.elastic.co/apm/module/apmgoredisv8/v2"
 	"go.elastic.co/apm/module/apmsql"
 	_ "go.elastic.co/apm/module/apmsql/v2/pq"
-
-	_ "github.com/lib/pq"
 )
 
 func main() {
@@ -26,20 +27,26 @@ func main() {
 	}
 
 	store := db.NewStore(conn)
+	// Create monitored Redis client for both asynq and direct operations
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: config.RedisAddress,
+	})
+	redisClient.AddHook(apmgoredis.NewHook())
+	// Configure Redis options for asynq
 	redisOpts := asynq.RedisClientOpt{
 		Addr: config.RedisAddress,
 	}
-	taskDistributor := worker.NewRedisTaskDistributor(redisOpts)
-	go runTaskProcessor(redisOpts, store)
-	server := api.NewServer(store, taskDistributor)
+	taskDistributor := worker.NewRedisTaskDistributor(redisOpts, redisClient)
+	go runTaskProcessor(redisOpts, redisClient, store)
+	server := api.NewServer(store, taskDistributor, redisClient)
 	err = server.Start(config.ServerAddress)
 	if err != nil {
 		log.Fatal("cannot start server:", err)
 	}
 
 }
-func runTaskProcessor(redisOpt asynq.RedisClientOpt, store db.Store) {
-	taskProcessor := worker.NewRedisTaskProcessor(redisOpt, store)
+func runTaskProcessor(redisOpt asynq.RedisClientOpt, redisClient *redis.Client, store db.Store) {
+	taskProcessor := worker.NewRedisTaskProcessor(redisOpt, redisClient, store)
 	log.Println("starting task processor...")
 	err := taskProcessor.Start()
 	if err != nil {
