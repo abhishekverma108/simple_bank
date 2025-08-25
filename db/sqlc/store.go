@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
+	"go.elastic.co/apm/v2"
 )
 
 type Store interface {
@@ -38,19 +40,29 @@ func NewStore(db *sql.DB) Store {
 }
 
 func (store *SQLStore) execTx(ctx context.Context, fn func(*Queries) error) error {
+	span, _ := apm.StartSpan(ctx, "sql.tx", "db")
+	defer span.End()
+
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
+		apm.CaptureError(ctx, err).Send()
 		return err
 	}
 	q := New(tx)
 	err = fn(q)
 	if err != nil {
 		if rbErr := tx.Rollback(); rbErr != nil {
+			apm.CaptureError(ctx, fmt.Errorf("tx err: %v,rb err: %v", err, rbErr)).Send()
 			return fmt.Errorf("tx err: %v,rb err: %v", err, rbErr)
 		}
+		apm.CaptureError(ctx, err).Send()
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		apm.CaptureError(ctx, err).Send()
+		return err
+	}
+	return nil
 }
 
 var txKey = struct{}{}

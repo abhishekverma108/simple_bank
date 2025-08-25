@@ -13,6 +13,7 @@ import (
 	"github.com/go-playground/validator/v10"
 
 	"github.com/gin-gonic/gin"
+	"go.elastic.co/apm/v2"
 )
 
 type createUserRequest struct {
@@ -29,8 +30,14 @@ type createUserResponse struct {
 }
 
 func (server *Server) createUser(ctx *gin.Context) {
+	reqCtx := ctx.Request.Context()
+
+	// Span: read body
+	spanRead, _ := apm.StartSpan(reqCtx, "read_request_body", "io")
 	bodyBytes, err := io.ReadAll(ctx.Request.Body)
+	spanRead.End()
 	if err != nil {
+		apm.CaptureError(reqCtx, err).Send()
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"error": "Failed to read request body",
 		})
@@ -38,28 +45,35 @@ func (server *Server) createUser(ctx *gin.Context) {
 	}
 
 	// Create decoder with strict validation
+	spanDecode, _ := apm.StartSpan(reqCtx, "decode_and_validate_user", "validation")
 	decoder := json.NewDecoder(bytes.NewReader(bodyBytes))
 	decoder.DisallowUnknownFields()
 
 	var req createUserRequest
 	if err := decoder.Decode(&req); err != nil {
+		spanDecode.End()
 		// Check if it's an unknown field error
 		if strings.Contains(err.Error(), "unknown field") {
+			apm.CaptureError(reqCtx, err).Send()
 			ctx.JSON(http.StatusBadRequest, gin.H{
 				"error":   "Invalid parameter found",
 				"details": err.Error(),
 			})
 			return
 		}
+		apm.CaptureError(reqCtx, err).Send()
 		ctx.JSON(http.StatusBadRequest, errorResponse(err))
 		return
 	}
 
 	// Validate the bound data using validator
 	if err := validator.New().Struct(&req); err != nil {
+		spanDecode.End()
+		apm.CaptureError(reqCtx, err).Send()
 		ctx.JSON(http.StatusBadRequest, errorResponse(err))
 		return
 	}
+	spanDecode.End()
 
 	arg := db.CreateUserTxParams{
 		CreateUserParams: db.CreateUserParams{
@@ -68,27 +82,34 @@ func (server *Server) createUser(ctx *gin.Context) {
 			PasswordHash: req.Password,
 		},
 		AfterCreate: func(user db.User) error {
+			// Span for distributing task
+			spanTask, _ := apm.StartSpan(reqCtx, "distribute_send_verify_email", "taskqueue")
 			taskPayload := worker.PayloadSendVerifyEmail{
 				Username: user.Username,
 			}
-			return server.taskDistributor.DistributeTaskSendVerifyEmail(ctx.Request.Context(), &taskPayload)
-			//if err != nil {
-			//	ctx.JSON(http.StatusInternalServerError, gin.H{
-			//		"error":   "Failed to send verification email",
-			//		"details": err.Error(),
-			//	})
-			//	return
-			//}
+			err := server.taskDistributor.DistributeTaskSendVerifyEmail(reqCtx, &taskPayload)
+			if err != nil {
+				apm.CaptureError(reqCtx, err).Send()
+			}
+			spanTask.End()
+			return err
 		},
 	}
 
-	txResult, err := server.store.CreateUserTx(ctx.Request.Context(), arg)
+	spanDB, _ := apm.StartSpan(reqCtx, "create_user_tx", "db")
+	txResult, err := server.store.CreateUserTx(reqCtx, arg)
+	spanDB.End()
 	if err != nil {
+		apm.CaptureError(reqCtx, err).Send()
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
 	}
-	err = server.redisClient.Set(ctx.Request.Context(), txResult.User.Username, "first of few users", 0).Err()
+
+	spanRedis, _ := apm.StartSpan(reqCtx, "redis_set_user_marker", "cache")
+	err = server.redisClient.Set(reqCtx, txResult.User.Username, "first of few users", 0).Err()
+	spanRedis.End()
 	if err != nil {
+		apm.CaptureError(reqCtx, err).Send()
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
 	}

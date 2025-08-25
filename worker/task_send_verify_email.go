@@ -8,6 +8,7 @@ import (
 
 	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog/log"
+	"go.elastic.co/apm/v2"
 )
 
 const TaskSendVerifyEmail = "task:send_verify_email"
@@ -21,13 +22,18 @@ func (distributor *RedisTaskDistributor) DistributeTaskSendVerifyEmail(
 	payload *PayloadSendVerifyEmail,
 	opts ...asynq.Option,
 ) error {
+	span, _ := apm.StartSpan(ctx, "asynq.enqueue_send_verify_email", "taskqueue")
+	defer span.End()
+
 	jsonPayload, err := json.Marshal(payload)
 	if err != nil {
+		apm.CaptureError(ctx, err).Send()
 		return fmt.Errorf("failed to marshal task payload %w", err)
 	}
 	task := asynq.NewTask(TaskSendVerifyEmail, jsonPayload, opts...)
 	info, err := distributor.client.EnqueueContext(ctx, task)
 	if err != nil {
+		apm.CaptureError(ctx, err).Send()
 		return fmt.Errorf("failed to enqueue task %w", err)
 
 	}
@@ -37,25 +43,39 @@ func (distributor *RedisTaskDistributor) DistributeTaskSendVerifyEmail(
 }
 
 func (processor *RedisTaskProcessor) ProcessTaskSendVerifyEmail(ctx context.Context, task *asynq.Task) error {
+	span, _ := apm.StartSpan(ctx, "process_send_verify_email", "taskqueue")
+	defer span.End()
+
 	var payload PayloadSendVerifyEmail
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal payload: %w", asynq.SkipRetry)
+		errWrapped := fmt.Errorf("failed to unmarshal payload: %w", asynq.SkipRetry)
+		apm.CaptureError(ctx, errWrapped).Send()
+		return errWrapped
 	}
+
+	spanDB, _ := apm.StartSpan(ctx, "db.get_user_by_username", "db")
 	user, err := processor.store.GetUserByUsername(ctx, payload.Username)
+	spanDB.End()
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return fmt.Errorf("user doesn't exist: %w", asynq.SkipRetry)
+			errWrapped := fmt.Errorf("user doesn't exist: %w", asynq.SkipRetry)
+			apm.CaptureError(ctx, errWrapped).Send()
+			return errWrapped
 		}
-		return fmt.Errorf("failed to get user: %w", err)
+		errWrapped := fmt.Errorf("failed to get user: %w", err)
+		apm.CaptureError(ctx, errWrapped).Send()
+		return errWrapped
 	}
-	// --- NEW: write username/email marker to Redis with TTL ---
+	// --- write username/email marker to Redis ---
 	key := fmt.Sprintf("verify_email:%s", payload.Username)
-	//ttl := 15 * time.Minute // adjust as needed, or use 0 for no expiration
-
+	spanRedis, _ := apm.StartSpan(ctx, "redis.set_verify_email_marker", "cache")
 	if err := processor.redisClient.Set(ctx, key, payload.Username, 0).Err(); err != nil {
-		// Return err so the task can retry if Redis had a transient issue.
-		return fmt.Errorf("failed to set redis key %q: %w", key, err)
+		spanRedis.End()
+		errWrapped := fmt.Errorf("failed to set redis key %q: %w", key, err)
+		apm.CaptureError(ctx, errWrapped).Send()
+		return errWrapped
 	}
+	spanRedis.End()
 	log.Info().Str("type", task.Type()).Bytes("payload", task.Payload()).Str("email", user.Email).Msg("processed task")
 	return nil
 }

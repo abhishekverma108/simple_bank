@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	_ "github.com/lib/pq"
-	"go.elastic.co/apm/module/apmsql"
-	_ "go.elastic.co/apm/module/apmsql/pq"
+	apmsql "go.elastic.co/apm/module/apmsql/v2"
+	_ "go.elastic.co/apm/module/apmsql/v2/pq"
 )
 
 const (

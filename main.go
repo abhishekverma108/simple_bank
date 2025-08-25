@@ -11,7 +11,7 @@ import (
 	"github.com/hibiken/asynq"
 	_ "github.com/lib/pq"
 	apmgoredis "go.elastic.co/apm/module/apmgoredisv8/v2"
-	"go.elastic.co/apm/module/apmsql"
+	apmsql "go.elastic.co/apm/module/apmsql/v2"
 	_ "go.elastic.co/apm/module/apmsql/v2/pq"
 )
 
